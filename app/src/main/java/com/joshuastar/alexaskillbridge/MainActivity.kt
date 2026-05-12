@@ -27,5 +27,8 @@ class MainActivity : ComponentActivity() {
             )
             startActivity(intent)
         }
+        if (TvAccessibilityService.instance == null) {
+            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+        }
     }
 }

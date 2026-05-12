@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">alexskillbridge</string>
+    <string name="accessibility_description">Allows Alexa to control your TV</string>
 </resources>
