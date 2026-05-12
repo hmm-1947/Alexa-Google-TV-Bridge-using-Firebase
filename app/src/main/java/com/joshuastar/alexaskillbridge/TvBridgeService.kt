@@ -64,7 +64,6 @@ class TvBridgeService : Service() {
         listenForCommands()
     }
 
-    // ── Notifications ──────────────────────────────────────────────────────────
 
     private fun createNotificationChannels() {
         val manager = getSystemService(NotificationManager::class.java)
@@ -100,7 +99,6 @@ class TvBridgeService : Service() {
         getSystemService(NotificationManager::class.java).notify(NOTIF_ID_LAUNCH, notif)
     }
 
-    // ── Firebase listener ──────────────────────────────────────────────────────
 
     private fun listenForCommands() {
         FirebaseDatabase.getInstance()
@@ -137,7 +135,6 @@ class TvBridgeService : Service() {
             })
     }
 
-    // ── Actions ────────────────────────────────────────────────────────────────
 
     private fun goHome() {
         Log.d("APP_LAUNCH", "Going home")
@@ -205,7 +202,6 @@ class TvBridgeService : Service() {
         launchOrNotify(intent, "Searching $appName", "Searching for $query")
     }
 
-    // ── Helpers ────────────────────────────────────────────────────────────────
 
     private fun findPackageByLabel(key: String): String? {
         val apps = packageManager.getInstalledApplications(0)

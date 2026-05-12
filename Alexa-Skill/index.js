@@ -1,300 +1,122 @@
-/* *
- * This sample demonstrates handling intents from an Alexa skill using the Alexa Skills Kit SDK (v2).
- * Please visit https://alexa.design/cookbook for additional examples on implementing slots, dialog management,
- * session persistence, api calls, and more.
- * */
 const Alexa = require('ask-sdk-core');
 const admin = require('firebase-admin');
 
-const serviceAccount =
-    require('./firebase-key.json');
 
-if (!admin.apps.length) {
-    admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount),
-        databaseURL: "your firebase database url"
+const serviceAccount = require('./firebase-key.json');
+const DB_URL = "https://try123-73326-default-rtdb.firebaseio.com/";
+
+const getDb = () => {
+    if (!admin.apps.length) {
+        admin.initializeApp({
+            credential: admin.credential.cert(serviceAccount),
+            databaseURL: DB_URL
+        });
+    }
+    return admin.database();
+};
+
+const sendCommand = async (payload) => {
+    const db = getDb();
+    await db.ref("tv_commands/current").set({
+        ...payload,
+        timestamp: Date.now()
     });
-}
-
-const db = admin.database();
-const LaunchRequestHandler = {
-    canHandle(handlerInput) {
-        return Alexa.getRequestType(handlerInput.requestEnvelope) === 'LaunchRequest';
-    },
-    handle(handlerInput) {
-        const speakOutput = 'Welcome, you can say Hello or Help. Which would you like to try?';
-
-        return handlerInput.responseBuilder
-            .speak(speakOutput)
-            .reprompt(speakOutput)
-            .getResponse();
-    }
+    await admin.app().delete();
 };
 
-const HelloWorldIntentHandler = {
-    canHandle(handlerInput) {
-        return Alexa.getRequestType(handlerInput.requestEnvelope) === 'IntentRequest'
-            && Alexa.getIntentName(handlerInput.requestEnvelope) === 'HelloWorldIntent';
-    },
-    handle(handlerInput) {
-        const speakOutput = 'Hello World!';
+const speak = (handlerInput, text) =>
+    handlerInput.responseBuilder
+        .speak(text)
+        .withShouldEndSession(true)
+        .getResponse();
 
-        return handlerInput.responseBuilder
-            .speak(speakOutput)
-            //.reprompt('add a reprompt if you want to keep the session open for the user to respond')
-            .getResponse();
-    }
-};
-const GoHomeIntentHandler = {
-    canHandle(handlerInput) {
-        return Alexa.getRequestType(handlerInput.requestEnvelope) === 'IntentRequest'
-            && Alexa.getIntentName(handlerInput.requestEnvelope) === 'GoHomeIntent';
-    },
-    async handle(handlerInput) {
-        try {
-            if (!admin.apps.length) {
-                admin.initializeApp({
-                    credential: admin.credential.cert(serviceAccount),
-                    databaseURL: "your firebase database url/"
-                });
-            }
-            const db = admin.database();
+const isIntent = (handlerInput, ...names) =>
+    Alexa.getRequestType(handlerInput.requestEnvelope) === 'IntentRequest' &&
+    names.includes(Alexa.getIntentName(handlerInput.requestEnvelope));
 
-            await db.ref("tv_commands/current").set({
-                action: "home",
-                timestamp: Date.now()
-            });
+const withErrorHandling = (handlerInput, fn) =>
+    fn().catch(err => {
+        console.error(err);
+        return handlerInput.responseBuilder.speak("An error occurred").getResponse();
+    });
 
-            await admin.app().delete();
-
-            return handlerInput.responseBuilder
-                .speak("Going home")
-                .withShouldEndSession(true)
-                .getResponse();
-
-        } catch(error) {
-            console.log(error);
-            return handlerInput.responseBuilder
-                .speak("An error occurred")
-                .getResponse();
-        }
-    }
-};
 
 const OpenAppIntentHandler = {
-    canHandle(handlerInput) {
-        return Alexa.getRequestType(handlerInput.requestEnvelope) === 'IntentRequest'
-            && Alexa.getIntentName(handlerInput.requestEnvelope) === 'OpenAppIntent';
-    },
+    canHandle: (h) => isIntent(h, 'OpenAppIntent'),
+    handle: (h) => withErrorHandling(h, async () => {
+        const app = h.requestEnvelope.request.intent.slots.app?.value ?? "unknown";
+        await sendCommand({ action: "open", app });
+        return speak(h, `Opening ${app}`);
+    })
+};
 
-    async handle(handlerInput) {
-        try {
-            const slots = handlerInput.requestEnvelope.request.intent.slots;
-            const app = slots.app && slots.app.value ? slots.app.value : "unknown";
+const GoHomeIntentHandler = {
+    canHandle: (h) => isIntent(h, 'GoHomeIntent'),
+    handle: (h) => withErrorHandling(h, async () => {
+        await sendCommand({ action: "home" });
+        return speak(h, "Going home");
+    })
+};
 
-            // Reinitialize if deleted by previous invocation
-            if (!admin.apps.length) {
-                admin.initializeApp({
-                    credential: admin.credential.cert(serviceAccount),
-                    databaseURL: "your firebase database url"
-                });
-            }
-            const db = admin.database();
+const PowerOffIntentHandler = {
+    canHandle: (h) => isIntent(h, 'PowerOffIntent'),
+    handle: (h) => withErrorHandling(h, async () => {
+        await sendCommand({ action: "power_off" });
+        return speak(h, "Turning off TV");
+    })
+};
 
-            await db.ref("tv_commands/current").set({
-                action: "open",
-                app: app,
-                timestamp: Date.now()
-            });
-
-            await admin.app().delete();
-
-            return handlerInput.responseBuilder
-                .speak(`Opening ${app}`)
-                .withShouldEndSession(true)
-                .getResponse();
-
-        } catch (error) {
-            console.log(error);
-            return handlerInput.responseBuilder
-                .speak("An error occurred")
-                .getResponse();
-        }
-    }
+const PowerOnIntentHandler = {
+    canHandle: (h) => isIntent(h, 'PowerOnIntent'),
+    handle: (h) => withErrorHandling(h, async () => {
+        await sendCommand({ action: "power_on" });
+        return speak(h, "Turning on TV");
+    })
 };
 
 const SearchAppIntentHandler = {
-    canHandle(handlerInput) {
-        return Alexa.getRequestType(handlerInput.requestEnvelope) === 'IntentRequest'
-            && Alexa.getIntentName(handlerInput.requestEnvelope) === 'SearchAppIntent';
-    },
-    async handle(handlerInput) {
-        const currentIntent = handlerInput.requestEnvelope.request.intent;
-
-        // If dialog is not complete, keep asking for missing slots
-        if (handlerInput.requestEnvelope.request.dialogState !== 'COMPLETED') {
-            return handlerInput.responseBuilder
-                .addDelegateDirective(currentIntent)
-                .getResponse();
+    canHandle: (h) => isIntent(h, 'SearchAppIntent'),
+    handle: (h) => withErrorHandling(h, async () => {
+        const intent = h.requestEnvelope.request.intent;
+        if (h.requestEnvelope.request.dialogState !== 'COMPLETED') {
+            return h.responseBuilder.addDelegateDirective(intent).getResponse();
         }
-
-        // Dialog complete, all slots filled
-        try {
-            const slots = handlerInput.requestEnvelope.request.intent.slots;
-            const app = slots.apps?.value ?? "unknown";
-            const query = slots.query?.value ?? "";
-
-            if (!admin.apps.length) {
-                admin.initializeApp({
-                    credential: admin.credential.cert(serviceAccount),
-                    databaseURL: "you database url"
-                });
-            }
-            const db = admin.database();
-
-            await db.ref("tv_commands/current").set({
-                action: "search",
-                app: app,
-                query: query,
-                timestamp: Date.now()
-            });
-
-            await admin.app().delete();
-
-            return handlerInput.responseBuilder
-                .speak(`Searching ${app} for ${query}`)
-                .withShouldEndSession(true)
-                .getResponse();
-
-        } catch(error) {
-            console.log(error);
-            return handlerInput.responseBuilder
-                .speak("An error occurred")
-                .getResponse();
-        }
-    }
-};
-
-const HelpIntentHandler = {
-    canHandle(handlerInput) {
-        return Alexa.getRequestType(handlerInput.requestEnvelope) === 'IntentRequest'
-            && Alexa.getIntentName(handlerInput.requestEnvelope) === 'AMAZON.HelpIntent';
-    },
-    handle(handlerInput) {
-        const speakOutput = 'You can say hello to me! How can I help?';
-
-        return handlerInput.responseBuilder
-            .speak(speakOutput)
-            .reprompt(speakOutput)
-            .getResponse();
-    }
+        const app   = intent.slots.apps?.value  ?? "unknown";
+        const query = intent.slots.query?.value ?? "";
+        await sendCommand({ action: "search", app, query });
+        return speak(h, `Searching ${app} for ${query}`);
+    })
 };
 
 const CancelAndStopIntentHandler = {
-    canHandle(handlerInput) {
-        return Alexa.getRequestType(handlerInput.requestEnvelope) === 'IntentRequest'
-            && (Alexa.getIntentName(handlerInput.requestEnvelope) === 'AMAZON.CancelIntent'
-                || Alexa.getIntentName(handlerInput.requestEnvelope) === 'AMAZON.StopIntent');
-    },
-    handle(handlerInput) {
-        const speakOutput = 'Goodbye!';
-
-        return handlerInput.responseBuilder
-            .speak(speakOutput)
-            .getResponse();
-    }
+    canHandle: (h) => isIntent(h, 'AMAZON.CancelIntent', 'AMAZON.StopIntent'),
+    handle: (h) => h.responseBuilder.speak("Goodbye!").getResponse()
 };
-/* *
- * FallbackIntent triggers when a customer says something that doesn’t map to any intents in your skill
- * It must also be defined in the language model (if the locale supports it)
- * This handler can be safely added but will be ingnored in locales that do not support it yet
- * */
-const FallbackIntentHandler = {
-    canHandle(handlerInput) {
-        return Alexa.getRequestType(handlerInput.requestEnvelope) === 'IntentRequest'
-            && Alexa.getIntentName(handlerInput.requestEnvelope) === 'AMAZON.FallbackIntent';
-    },
-    handle(handlerInput) {
-        const speakOutput = 'Sorry, I don\'t know about that. Please try again.';
 
-        return handlerInput.responseBuilder
-            .speak(speakOutput)
-            .reprompt(speakOutput)
-            .getResponse();
-    }
-};
-/* *
- * SessionEndedRequest notifies that a session was ended. This handler will be triggered when a currently open
- * session is closed for one of the following reasons: 1) The user says "exit" or "quit". 2) The user does not
- * respond or says something that does not match an intent defined in your voice model. 3) An error occurs
- * */
 const SessionEndedRequestHandler = {
-    canHandle(handlerInput) {
-        return Alexa.getRequestType(handlerInput.requestEnvelope) === 'SessionEndedRequest';
-    },
-    handle(handlerInput) {
-        console.log(`~~~~ Session ended: ${JSON.stringify(handlerInput.requestEnvelope)}`);
-        // Any cleanup logic goes here.
-        return handlerInput.responseBuilder.getResponse(); // notice we send an empty response
-    }
+    canHandle: (h) => Alexa.getRequestType(h.requestEnvelope) === 'SessionEndedRequest',
+    handle: (h) => { console.log(`Session ended: ${JSON.stringify(h.requestEnvelope)}`); return h.responseBuilder.getResponse(); }
 };
-/* *
- * The intent reflector is used for interaction model testing and debugging.
- * It will simply repeat the intent the user said. You can create custom handlers for your intents
- * by defining them above, then also adding them to the request handler chain below
- * */
-const IntentReflectorHandler = {
-    canHandle(handlerInput) {
-        return Alexa.getRequestType(handlerInput.requestEnvelope) === 'IntentRequest';
-    },
-    handle(handlerInput) {
-        const intentName = Alexa.getIntentName(handlerInput.requestEnvelope);
-        const speakOutput = `You just triggered ${intentName}`;
 
-        return handlerInput.responseBuilder
-            .speak(speakOutput)
-            //.reprompt('add a reprompt if you want to keep the session open for the user to respond')
-            .getResponse();
-    }
-};
-/**
- * Generic error handling to capture any syntax or routing errors. If you receive an error
- * stating the request handler chain is not found, you have not implemented a handler for
- * the intent being invoked or included it in the skill builder below
- * */
 const ErrorHandler = {
-    canHandle() {
-        return true;
-    },
-    handle(handlerInput, error) {
-        const speakOutput = 'Sorry, I had trouble doing what you asked. Please try again.';
-        console.log(`~~~~ Error handled: ${JSON.stringify(error)}`);
-
-        return handlerInput.responseBuilder
-            .speak(speakOutput)
-            .reprompt(speakOutput)
-            .getResponse();
+    canHandle: () => true,
+    handle: (h, error) => {
+        console.error(`Error: ${JSON.stringify(error)}`);
+        return h.responseBuilder.speak("Sorry, I had trouble doing what you asked.").reprompt("Try again.").getResponse();
     }
 };
 
-/**
- * This handler acts as the entry point for your skill, routing all request and response
- * payloads to the handlers above. Make sure any new handlers or interceptors you've
- * defined are included below. The order matters - they're processed top to bottom
- * */
+
 exports.handler = Alexa.SkillBuilders.custom()
     .addRequestHandlers(
-        LaunchRequestHandler,
-        HelloWorldIntentHandler,
-        OpenAppIntentHandler, //→ add the new intents you make
-        GoHomeIntentHandler,  //→ add the new intents you make
-        SearchAppIntentHandler, //→ add the new intents you make
-        HelpIntentHandler,
+        OpenAppIntentHandler,
+        GoHomeIntentHandler,
+        PowerOffIntentHandler,
+        PowerOnIntentHandler,
+        SearchAppIntentHandler,
         CancelAndStopIntentHandler,
-        FallbackIntentHandler,
-        SessionEndedRequestHandler,
-        IntentReflectorHandler)
-    .addErrorHandlers(
-        ErrorHandler)
-    .withCustomUserAgent('sample/hello-world/v1.2')
+        SessionEndedRequestHandler
+    )
+    .addErrorHandlers(ErrorHandler)
+    .withCustomUserAgent('tv-bridge/v2')
     .lambda();
